@@ -340,22 +340,9 @@ class Selector {
                                               const Token::TokenType op, const JValue &comparison_value,
                                               jsn::vector<int64_t> &result);
     JsonUtilCode processAttributeFilter(const StringViewHelper &member_name, jsn::vector<int64_t> &result);
-    /**
-     * The member_name member of candidate, or a null pointer if candidate is not an object or
-     * has no such member.
-     */
     const JValue *resolveMember(const JValue &candidate, const StringViewHelper &member_name) const;
-    /**
-     * The element at idx of candidate's member_name member, or a null pointer if candidate has
-     * no such member, the member is not an array, or idx is out of bounds (a negative idx counts
-     * from the end of the array).
-     */
     const JValue *resolveMemberAtIndex(const JValue &candidate, const StringViewHelper &member_name,
                                        int64_t idx) const;
-    /**
-     * Whether candidate's member_name member is an array containing at least one element that
-     * passes evalOp(element, op, comparison_value).
-     */
     bool anyMemberElementMatches(const JValue &candidate, const StringViewHelper &member_name,
                                  const Token::TokenType op, const JValue &comparison_value);
 
