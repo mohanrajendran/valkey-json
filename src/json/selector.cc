@@ -2068,40 +2068,15 @@ JsonUtilCode Selector::processNestedAnyMatch(const StringViewHelper &member_name
                                             const JValue &comparison_value, jsn::vector<int64_t> &result) {
     if (node->IsArray()) {
         for (int64_t i = 0; i < node->Size(); i++) {
-            JValue &m = node->GetArray()[i];
-            JValue *v;
-            if (!m.IsObject()) continue;  // not object, skip
-            JValue::MemberIterator it = m.FindMember(member_name.getView());
-            if (it == m.MemberEnd()) continue;  // does not have the attribute, skip
-            v = &it->value;
-            if (v->IsArray()) {
-                bool found = false;
-                for (int64_t j = 0; j < v->Size() && !found; j++) {
-                    JValue &n = v->GetArray()[j];
-                    JValue *w = &n;
-                    if (evalOp(w, op, comparison_value)) {
-                        // note that here we push back parent array element
-                        result.push_back(i);
-                        found = true;
-                    }
-                }
-            }
+            // note that here we push back parent array element
+            if (anyMemberElementMatches(node->GetArray()[i], member_name, op, comparison_value))
+                result.push_back(i);
         }
     } else if (node->IsObject()) {
         int64_t ordinal = 0;
         for (const auto &member : node->GetObject()) {
-            const JValue &candidate = member.value;
-            if (candidate.IsObject()) {
-                auto it = candidate.FindMember(member_name.getView());
-                if (it != candidate.MemberEnd() && it->value.IsArray()) {
-                    for (const auto &element : it->value.GetArray()) {
-                        if (evalOp(&element, op, comparison_value)) {
-                            result.push_back(ordinal);
-                            break;
-                        }
-                    }
-                }
-            }
+            if (anyMemberElementMatches(member.value, member_name, op, comparison_value))
+                result.push_back(ordinal);
             ++ordinal;
         }
     }
@@ -2199,6 +2174,20 @@ const JValue *Selector::resolveMemberAtIndex(const JValue &candidate, const Stri
     if (idx < 0) idx += member->Size();
     if (idx < 0 || idx >= static_cast<int64_t>(member->Size())) return nullptr;
     return &member->GetArray()[idx];
+}
+
+/**
+ * Whether candidate's member_name member is an array containing at least one element that
+ * passes evalOp(element, op, comparison_value).
+ */
+bool Selector::anyMemberElementMatches(const JValue &candidate, const StringViewHelper &member_name,
+                                       const Token::TokenType op, const JValue &comparison_value) {
+    const JValue *member = resolveMember(candidate, member_name);
+    if (member == nullptr || !member->IsArray()) return false;
+    for (const auto &element : member->GetArray()) {
+        if (evalOp(&element, op, comparison_value)) return true;
+    }
+    return false;
 }
 
 bool Selector::evalOp(const JValue *v, const Token::TokenType op, const JValue &comparison_value) {

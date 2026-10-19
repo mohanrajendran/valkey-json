@@ -352,6 +352,12 @@ class Selector {
      */
     const JValue *resolveMemberAtIndex(const JValue &candidate, const StringViewHelper &member_name,
                                        int64_t idx) const;
+    /**
+     * Whether candidate's member_name member is an array containing at least one element that
+     * passes evalOp(element, op, comparison_value).
+     */
+    bool anyMemberElementMatches(const JValue &candidate, const StringViewHelper &member_name,
+                                 const Token::TokenType op, const JValue &comparison_value);
 
     bool evalOp(const JValue *v, const Token::TokenType op, const JValue &comparison_value);
     bool deleteValue(const jsn::string &path);
