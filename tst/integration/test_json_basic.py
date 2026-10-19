@@ -3853,9 +3853,9 @@ class TestJsonBasic(JsonTestCase):
             (k4, '$["books"][?((@["price"]>1&&@["price"]<20)&&(@["sold"]==false))]',
              b'[{"price":15,"sold":false,"title":"abc"}]'),
             (k5, '$.*[?(@ > 7 || @ < 3)]',
-             b'[8,9,1,2]'),   # expression-order compatibility test
+             b'[1,2,8,9]'),   # document order regardless of which OR term matches first
             (k5, '$.*[?(@ < 3 || @ > 7)]',
-             b'[1,2,8,9]'),   # expression-order compatibility test
+             b'[1,2,8,9]'),   # document order regardless of which OR term matches first
             (k5, '$.*[?(@ > 3 && @ < 7)]',
              b'[4,5,6]')
         ]:
