@@ -1851,7 +1851,7 @@ JsonUtilCode Selector::parseFactor(jsn::vector<int64_t> &result) {
 
                             if (!lex.matchToken(Token::AT)) return JSONUTIL_INVALID_JSON_PATH;
                         }
-                        return processArrayContains(member_name, op, v, result);
+                        return processNestedAnyMatch(member_name, op, v, result);
                     } else {
                         int64_t index;
                         rc = parseIndex(index);
@@ -2064,7 +2064,7 @@ JsonUtilCode Selector::swapComparisonOpSide(Token::TokenType &op) {
 // We can enter an array and see if it contains an object that matches a condition.
 // This only looks down one level.
 // Further recursion can be investigated in the future.
-JsonUtilCode Selector::processArrayContains(const StringViewHelper &member_name, const Token::TokenType op,
+JsonUtilCode Selector::processNestedAnyMatch(const StringViewHelper &member_name, const Token::TokenType op,
                                             const JValue &comparison_value, jsn::vector<int64_t> &result) {
     if (node->IsArray()) {
         for (int64_t i = 0; i < node->Size(); i++) {

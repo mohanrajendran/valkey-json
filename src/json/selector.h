@@ -331,7 +331,7 @@ class Selector {
     JsonUtilCode processSlice(int64_t start, int64_t end, const int64_t step = 1);
     JsonUtilCode processUnion(jsn::vector<int64_t> union_indices);
     JsonUtilCode processFilterResult(jsn::vector<int64_t> &result);
-    JsonUtilCode processArrayContains(const StringViewHelper &member_name, const Token::TokenType op,
+    JsonUtilCode processNestedAnyMatch(const StringViewHelper &member_name, const Token::TokenType op,
                                       const JValue &comparison_value, jsn::vector<int64_t> &result);
     JsonUtilCode processComparisonExpr(const bool is_self, const StringViewHelper &member_name,
                                        const Token::TokenType op, const JValue &comparison_value,
