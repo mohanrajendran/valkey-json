@@ -1689,6 +1689,8 @@ JsonUtilCode Selector::parseFilter() {
 
 JsonUtilCode Selector::processFilterResult(jsn::vector<int64_t> &result) {
     JsonUtilCode rc;
+    // Sort results first before processing it. This applies to both object and array filters
+    std::sort(result.begin(), result.end());
     if (node->IsArray()) {
         for (auto idx : result) {
             TRACE("DEBUG", "processFilterResult proceed to array index " << idx << ". remaining path: "
@@ -1701,7 +1703,6 @@ JsonUtilCode Selector::processFilterResult(jsn::vector<int64_t> &result) {
         node = nullptr;
         return JSONUTIL_SUCCESS;
     } else if (node->IsObject()) {
-        std::sort(result.begin(), result.end());
         auto match = result.begin();
         int64_t ordinal = 0;
         for (auto &member : node->GetObject()) {

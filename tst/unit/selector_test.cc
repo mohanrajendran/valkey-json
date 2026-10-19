@@ -502,14 +502,16 @@ TEST_F(SelectorTest, test_filterExpr_expression_part6) {
     EXPECT_EQ(rs0[0].first->GetInt(), 5);
     EXPECT_EQ(rs0[1].first->GetInt(), 6);
 
+    // OR used to append each term's new matches in evaluation order (5, 6, then 1, 2) rather than
+    // document order; now sorted, so the result is in document order (1, 2, 5, 6).
     rc = selector.getValues(*d1, "$..[?(4<@.NumEntry||@.NumEntry<3)].NumEntry");
     EXPECT_EQ(rc, JSONUTIL_SUCCESS);
     auto &rs1 = selector.getResultSet();
     ASSERT_EQ(rs1.size(), 4);
-    EXPECT_EQ(rs1[0].first->GetInt(), 5);
-    EXPECT_EQ(rs1[1].first->GetInt(), 6);
-    EXPECT_EQ(rs1[2].first->GetInt(), 1);
-    EXPECT_EQ(rs1[3].first->GetInt(), 2);
+    EXPECT_EQ(rs1[0].first->GetInt(), 1);
+    EXPECT_EQ(rs1[1].first->GetInt(), 2);
+    EXPECT_EQ(rs1[2].first->GetInt(), 5);
+    EXPECT_EQ(rs1[3].first->GetInt(), 6);
 
     rc = selector.getValues(*d1, "$..NumEntry[?(@>4)]");
     EXPECT_EQ(rc, JSONUTIL_SUCCESS);
@@ -1465,7 +1467,7 @@ INSTANTIATE_TEST_SUITE_P(
         return info.param.name;
     });
 
-TEST_F(SelectorTest, test_filter_union_preserves_array_expression_order) {
+TEST_F(SelectorTest, test_filter_union_preserves_document_order) {
     const char *input =
         "[{\"id\":\"first\",\"price\":20},"
         "{\"id\":\"second\",\"price\":0},"
@@ -1474,13 +1476,15 @@ TEST_F(SelectorTest, test_filter_union_preserves_array_expression_order) {
     JsonUtilCode rc = dom_parse(nullptr, input, strlen(input), &d1);
     EXPECT_EQ(rc, JSONUTIL_SUCCESS);
 
+    // OR used to append each term's new matches in evaluation order (first, third, then second)
+    // rather than document order; now sorted, so the result is in document order.
     Selector selector;
     rc = selector.getValues(*d1, "$[?(@.price > 15 || @.id == \"second\")].id");
     EXPECT_EQ(rc, JSONUTIL_SUCCESS);
     ASSERT_EQ(selector.getResultSet().size(), 3);
     EXPECT_STREQ(selector.getResultSet()[0].first->GetString(), "first");
-    EXPECT_STREQ(selector.getResultSet()[1].first->GetString(), "third");
-    EXPECT_STREQ(selector.getResultSet()[2].first->GetString(), "second");
+    EXPECT_STREQ(selector.getResultSet()[1].first->GetString(), "second");
+    EXPECT_STREQ(selector.getResultSet()[2].first->GetString(), "third");
 
     dom_free_doc(d1);
 }
