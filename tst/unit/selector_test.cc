@@ -1489,6 +1489,43 @@ TEST_F(SelectorTest, test_filter_union_preserves_document_order) {
     dom_free_doc(d1);
 }
 
+TEST_F(SelectorTest, test_wildcard_filter_on_object_members) {
+    JDocument *d1;
+    JsonUtilCode rc = dom_parse(nullptr, object_store, strlen(object_store), &d1);
+    EXPECT_EQ(rc, JSONUTIL_SUCCESS);
+
+    // ".*[?(...)]" (no separating bracket) used to hard-reject a non-array node before ever
+    // reaching the shared filter logic that already supports objects.
+    Selector selector;
+    rc = selector.getValues(*d1, "$.booksById.*[?(@.price > 15)].bookTitle");
+    EXPECT_EQ(rc, JSONUTIL_SUCCESS);
+    ASSERT_EQ(selector.getResultSet().size(), 3);
+    EXPECT_STREQ(selector.getResultSet()[0].first->GetString(), "Moby Dick");
+    EXPECT_STREQ(selector.getResultSet()[1].first->GetString(), "The Lord of the Rings");
+    EXPECT_STREQ(selector.getResultSet()[2].first->GetString(), "Ulysses");
+
+    // "[*][?(...)]" (wildcard and filter in separate brackets) never had the array-only guard,
+    // so it already worked; pinned here so a future change can't silently reintroduce it there.
+    Selector selector2;
+    rc = selector2.getValues(*d1, "$.booksById[*][?(@.price > 15)].bookTitle");
+    EXPECT_EQ(rc, JSONUTIL_SUCCESS);
+    ASSERT_EQ(selector2.getResultSet().size(), 3);
+    EXPECT_STREQ(selector2.getResultSet()[0].first->GetString(), "Moby Dick");
+    EXPECT_STREQ(selector2.getResultSet()[1].first->GetString(), "The Lord of the Rings");
+    EXPECT_STREQ(selector2.getResultSet()[2].first->GetString(), "Ulysses");
+
+    // "..*[?(...)]" reaches the same ".*[?(...)]" grammar production via recursive descent.
+    Selector selector3;
+    rc = selector3.getValues(*d1, "$..*[?(@.price > 15)].bookTitle");
+    EXPECT_EQ(rc, JSONUTIL_SUCCESS);
+    ASSERT_EQ(selector3.getResultSet().size(), 3);
+    EXPECT_STREQ(selector3.getResultSet()[0].first->GetString(), "Moby Dick");
+    EXPECT_STREQ(selector3.getResultSet()[1].first->GetString(), "The Lord of the Rings");
+    EXPECT_STREQ(selector3.getResultSet()[2].first->GetString(), "Ulysses");
+
+    dom_free_doc(d1);
+}
+
 TEST_F(SelectorTest, test_filter_object_scalar_members) {
     const char *input = "{\"low\":1,\"high\":3}";
     JDocument *d1;

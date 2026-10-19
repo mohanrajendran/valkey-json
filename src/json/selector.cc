@@ -1265,7 +1265,7 @@ JsonUtilCode Selector::parseUnquotedMemberName(StringViewHelper &name) {
  *   WildcardFilter  ::= "[" "?" "(" FilterExpr ")" "]"
  */
 JsonUtilCode Selector::parseWildcardFilter() {
-    if (!node->IsArray()) return JSONUTIL_INVALID_JSON_PATH;
+    if (!node->IsArray() && !node->IsObject()) return JSONUTIL_INVALID_JSON_PATH;
 
     if (!lex.matchToken(Token::LBRACKET)) return JSONUTIL_INVALID_JSON_PATH;
     if (!lex.matchToken(Token::QUESTION_MARK)) return JSONUTIL_INVALID_JSON_PATH;
