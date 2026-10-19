@@ -340,6 +340,12 @@ class Selector {
                                               const Token::TokenType op, const JValue &comparison_value,
                                               jsn::vector<int64_t> &result);
     JsonUtilCode processAttributeFilter(const StringViewHelper &member_name, jsn::vector<int64_t> &result);
+    /**
+     * The member_name member of candidate, or a null pointer if candidate is not an object or
+     * has no such member.
+     */
+    const JValue *resolveMember(const JValue &candidate, const StringViewHelper &member_name) const;
+
     bool evalOp(const JValue *v, const Token::TokenType op, const JValue &comparison_value);
     bool deleteValue(const jsn::string &path);
     void vectorUnion(const jsn::vector<int64_t> &v, jsn::vector<int64_t> &r, jsn::unordered_set<int64_t> &set);
