@@ -1426,6 +1426,22 @@ INSTANTIATE_TEST_SUITE_P(
             "$.booksById[?(@.ratings[0] > 2)].bookTitle",
             {"Sword of Honour", "Moby Dick"}},
         ObjectFilterCase{
+            "NegativeIndex",
+            "$.booksById[?(@.ratings[-1] > 4)].bookTitle",
+            {"The Lord of the Rings"}},
+        ObjectFilterCase{
+            "NegativeIndexEquals",
+            "$.booksById[?(@.ratings[-1] == 5)].bookTitle",
+            {"The Lord of the Rings"}},
+        ObjectFilterCase{
+            "IndexPastEnd",
+            "$.booksById[?(@.ratings[5] > 0)].bookTitle",
+            {}},
+        ObjectFilterCase{
+            "NegativeIndexPastStart",
+            "$.booksById[?(@.ratings[-5] > 0)].bookTitle",
+            {}},
+        ObjectFilterCase{
             "NestedFilter",
             "$.booksById[?(@.ratings[?(@==4)])].bookTitle",
             {"Sayings of the Century", "Sword of Honour", "Moby Dick"}},
