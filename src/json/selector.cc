@@ -2091,14 +2091,14 @@ JsonUtilCode Selector::processComparisonExprAtIndex(const int64_t idx, const Str
                                                     jsn::vector<int64_t> &result) {
     if (node->IsArray()) {
         for (int64_t i = 0; i < node->Size(); i++) {
-            const JValue *v = resolveMemberAtIndex(node->GetArray()[i], member_name, idx);
+            const JValue *v = resolveMemberElementAtIndex(node->GetArray()[i], member_name, idx);
             // note that here we push back parent array element
             if (v != nullptr && evalOp(v, op, comparison_value)) result.push_back(i);
         }
     } else if (node->IsObject()) {
         int64_t ordinal = 0;
         for (const auto &member : node->GetObject()) {
-            const JValue *v = resolveMemberAtIndex(member.value, member_name, idx);
+            const JValue *v = resolveMemberElementAtIndex(member.value, member_name, idx);
             if (v != nullptr && evalOp(v, op, comparison_value)) result.push_back(ordinal);
             ++ordinal;
         }
@@ -2167,7 +2167,7 @@ const JValue *Selector::resolveMember(const JValue &candidate, const StringViewH
  * no such member, the member is not an array, or idx is out of bounds (a negative idx counts
  * from the end of the array).
  */
-const JValue *Selector::resolveMemberAtIndex(const JValue &candidate, const StringViewHelper &member_name,
+const JValue *Selector::resolveMemberElementAtIndex(const JValue &candidate, const StringViewHelper &member_name,
                                              int64_t idx) const {
     const JValue *member = resolveMember(candidate, member_name);
     if (member == nullptr || !member->IsArray()) return nullptr;

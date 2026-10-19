@@ -341,7 +341,7 @@ class Selector {
                                               jsn::vector<int64_t> &result);
     JsonUtilCode processAttributeFilter(const StringViewHelper &member_name, jsn::vector<int64_t> &result);
     const JValue *resolveMember(const JValue &candidate, const StringViewHelper &member_name) const;
-    const JValue *resolveMemberAtIndex(const JValue &candidate, const StringViewHelper &member_name,
+    const JValue *resolveMemberElementAtIndex(const JValue &candidate, const StringViewHelper &member_name,
                                        int64_t idx) const;
     bool anyMemberElementMatches(const JValue &candidate, const StringViewHelper &member_name,
                                  const Token::TokenType op, const JValue &comparison_value);
