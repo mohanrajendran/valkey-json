@@ -2360,20 +2360,12 @@ bool Selector::evalOp(const JValue *v, const Token::TokenType op, const JValue &
 JsonUtilCode Selector::processAttributeFilter(const StringViewHelper &member_name, jsn::vector<int64_t> &result) {
     if (node->IsArray()) {
         for (int64_t i = 0; i < node->Size(); i++) {
-            JValue &m = node->GetArray()[i];
-            if (!m.IsObject()) continue;  // skip non-object values
-            JValue::MemberIterator it = m.FindMember(member_name.getView());
-            if (it == m.MemberEnd()) continue;  // does not have the attribute, skip
-            result.push_back(i);
+            if (resolveMember(node->GetArray()[i], member_name) != nullptr) result.push_back(i);
         }
     } else if (node->IsObject()) {
         int64_t ordinal = 0;
         for (const auto &member : node->GetObject()) {
-            const JValue &candidate = member.value;
-            if (candidate.IsObject() &&
-                candidate.FindMember(member_name.getView()) !=
-                    candidate.MemberEnd())
-                result.push_back(ordinal);
+            if (resolveMember(member.value, member_name) != nullptr) result.push_back(ordinal);
             ++ordinal;
         }
     } else {
