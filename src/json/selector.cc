@@ -2112,38 +2112,15 @@ JsonUtilCode Selector::processComparisonExpr(const bool is_self, const StringVie
                                              jsn::vector<int64_t> &result) {
     if (node->IsArray()) {
         for (int64_t i = 0; i < node->Size(); i++) {
-            JValue &m = node->GetArray()[i];
-            JValue *v;
-            if (is_self) {
-                v = &m;
-            } else {
-                if (!m.IsObject()) continue;  // not object, skip
-                JValue::MemberIterator it = m.FindMember(member_name.getView());
-                if (it == m.MemberEnd()) continue;  // does not have the attribute, skip
-                v = &it->value;
-            }
-            if (evalOp(v, op, comparison_value)) result.push_back(i);
+            JValue &candidate = node->GetArray()[i];
+            const JValue *v = is_self ? &candidate : resolveMember(candidate, member_name);
+            if (v != nullptr && evalOp(v, op, comparison_value)) result.push_back(i);
         }
     } else if (node->IsObject()) {
         int64_t ordinal = 0;
         for (const auto &member : node->GetObject()) {
-            const JValue &candidate = member.value;
-            const JValue *value = &candidate;
-            if (!is_self) {
-                if (!candidate.IsObject()) {
-                    ++ordinal;
-                    continue;
-                }
-
-                auto it = candidate.FindMember(member_name.getView());
-                if (it == candidate.MemberEnd()) {
-                    ++ordinal;
-                    continue;
-                }
-                value = &it->value;
-            }
-            if (evalOp(value, op, comparison_value))
-                result.push_back(ordinal);
+            const JValue *v = is_self ? &member.value : resolveMember(member.value, member_name);
+            if (v != nullptr && evalOp(v, op, comparison_value)) result.push_back(ordinal);
             ++ordinal;
         }
     } else if (is_self) {
