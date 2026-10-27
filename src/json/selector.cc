@@ -1125,7 +1125,7 @@ JsonUtilCode Selector::parseWildcardInBrackets() {
         if (!lex.matchToken(Token::QUESTION_MARK)) return JSONUTIL_INVALID_JSON_PATH;
         if (!lex.matchToken(Token::LPAREN)) return JSONUTIL_INVALID_JSON_PATH;
 
-        jsn::vector<int64_t> result;  // subset of indexes of the current array
+        jsn::vector<int64_t> result;  // candidate indexes/ordinals for the current container
         JsonUtilCode rc = parseFilterExpr(result);
         if (rc != JSONUTIL_SUCCESS) return rc;
 
@@ -1265,7 +1265,7 @@ JsonUtilCode Selector::parseUnquotedMemberName(StringViewHelper &name) {
  *   WildcardFilter  ::= "[" "?" "(" FilterExpr ")" "]"
  */
 JsonUtilCode Selector::parseWildcardFilter() {
-    if (!node->IsArray()) return JSONUTIL_INVALID_JSON_PATH;
+    if (!node->IsArray() && !node->IsObject()) return JSONUTIL_INVALID_JSON_PATH;
 
     if (!lex.matchToken(Token::LBRACKET)) return JSONUTIL_INVALID_JSON_PATH;
     if (!lex.matchToken(Token::QUESTION_MARK)) return JSONUTIL_INVALID_JSON_PATH;
@@ -1678,7 +1678,7 @@ JsonUtilCode Selector::processSlice(int64_t start, int64_t end, const int64_t st
 JsonUtilCode Selector::parseFilter() {
     lex.nextToken();  // skip QUESTION_MARK
     if (!lex.matchToken(Token::LPAREN)) return JSONUTIL_INVALID_JSON_PATH;
-    jsn::vector<int64_t> result;  // subset of indexes of the current array
+    jsn::vector<int64_t> result;  // candidate indexes/ordinals for the current container
     JsonUtilCode rc = parseFilterExpr(result);
     if (rc != JSONUTIL_SUCCESS) return rc;
     if (!lex.matchToken(Token::RPAREN)) return JSONUTIL_INVALID_JSON_PATH;
@@ -1689,6 +1689,8 @@ JsonUtilCode Selector::parseFilter() {
 
 JsonUtilCode Selector::processFilterResult(jsn::vector<int64_t> &result) {
     JsonUtilCode rc;
+    // Sort results first before processing it. This applies to both object and array filters
+    std::sort(result.begin(), result.end());
     if (node->IsArray()) {
         for (auto idx : result) {
             TRACE("DEBUG", "processFilterResult proceed to array index " << idx << ". remaining path: "
@@ -1701,10 +1703,22 @@ JsonUtilCode Selector::processFilterResult(jsn::vector<int64_t> &result) {
         node = nullptr;
         return JSONUTIL_SUCCESS;
     } else if (node->IsObject()) {
-        if (result.empty()) {
-            // Null out the current node to signal the node is not selected.
-            node = nullptr;
+        auto match = result.begin();
+        int64_t ordinal = 0;
+        for (auto &member : node->GetObject()) {
+            if (match == result.end())
+                break;
+            if (*match == ordinal) {
+                StringViewHelper member_name;
+                member_name.setInternalView(member.name.GetStringView());
+                rc = evalObjectMember(member_name, member.value);
+                if (isSyntaxError(rc)) return rc;
+                ++match;
+            }
+            ++ordinal;
         }
+
+        node = nullptr;
         return JSONUTIL_SUCCESS;
     } else {
         if (!result.empty()) {
@@ -1838,7 +1852,7 @@ JsonUtilCode Selector::parseFactor(jsn::vector<int64_t> &result) {
 
                             if (!lex.matchToken(Token::AT)) return JSONUTIL_INVALID_JSON_PATH;
                         }
-                        return processArrayContains(member_name, op, v, result);
+                        return processNestedAnyMatch(member_name, op, v, result);
                     } else {
                         int64_t index;
                         rc = parseIndex(index);
@@ -2051,30 +2065,23 @@ JsonUtilCode Selector::swapComparisonOpSide(Token::TokenType &op) {
 // We can enter an array and see if it contains an object that matches a condition.
 // This only looks down one level.
 // Further recursion can be investigated in the future.
-JsonUtilCode Selector::processArrayContains(const StringViewHelper &member_name, const Token::TokenType op,
+JsonUtilCode Selector::processNestedAnyMatch(const StringViewHelper &member_name, const Token::TokenType op,
                                             const JValue &comparison_value, jsn::vector<int64_t> &result) {
     if (node->IsArray()) {
         for (int64_t i = 0; i < node->Size(); i++) {
-            JValue &m = node->GetArray()[i];
-            JValue *v;
-            if (!m.IsObject()) continue;  // not object, skip
-            JValue::MemberIterator it = m.FindMember(member_name.getView());
-            if (it == m.MemberEnd()) continue;  // does not have the attribute, skip
-            v = &it->value;
-            if (v->IsArray()) {
-                bool found = false;
-                for (int64_t j = 0; j < v->Size() && !found; j++) {
-                    JValue &n = v->GetArray()[j];
-                    JValue *w = &n;
-                    if (evalOp(w, op, comparison_value)) {
-                        // note that here we push back parent array element
-                        result.push_back(i);
-                        found = true;
-                    }
-                }
-            }
+            // note that here we push back parent array element
+            if (anyMemberElementMatches(node->GetArray()[i], member_name, op, comparison_value))
+                result.push_back(i);
+        }
+    } else if (node->IsObject()) {
+        int64_t ordinal = 0;
+        for (const auto &member : node->GetObject()) {
+            if (anyMemberElementMatches(member.value, member_name, op, comparison_value))
+                result.push_back(ordinal);
+            ++ordinal;
         }
     }
+
     if (!lex.matchToken(Token::RPAREN, true)) return JSONUTIL_INVALID_JSON_PATH;
     if (!lex.matchToken(Token::RBRACKET)) return JSONUTIL_INVALID_JSON_PATH;
     return JSONUTIL_SUCCESS;
@@ -2085,26 +2092,16 @@ JsonUtilCode Selector::processComparisonExprAtIndex(const int64_t idx, const Str
                                                     jsn::vector<int64_t> &result) {
     if (node->IsArray()) {
         for (int64_t i = 0; i < node->Size(); i++) {
-            JValue &m = node->GetArray()[i];
-            JValue *v;
-            if (!m.IsObject()) continue;  // not object, skip
-            JValue::MemberIterator it = m.FindMember(member_name.getView());
-            if (it == m.MemberEnd()) continue;  // does not have the attribute, skip
-            v = &it->value;
-            if (v->IsArray()) {
-                int64_t inner_index = idx;
-                // handle negative index
-                if (inner_index < 0) inner_index += v->Size();
-                // check index bounds
-                if (inner_index < static_cast<long long>(v->Size()) && inner_index >= 0) {
-                    JValue &n = v->GetArray()[inner_index];
-                    JValue *w = &n;
-                    if (evalOp(w, op, comparison_value)) {
-                        // note that here we push back parent array element
-                        result.push_back(i);
-                    }
-                }
-            }
+            const JValue *v = resolveMemberElementAtIndex(node->GetArray()[i], member_name, idx);
+            // note that here we push back parent array element
+            if (v != nullptr && evalOp(v, op, comparison_value)) result.push_back(i);
+        }
+    } else if (node->IsObject()) {
+        int64_t ordinal = 0;
+        for (const auto &member : node->GetObject()) {
+            const JValue *v = resolveMemberElementAtIndex(member.value, member_name, idx);
+            if (v != nullptr && evalOp(v, op, comparison_value)) result.push_back(ordinal);
+            ++ordinal;
         }
     }
     return JSONUTIL_SUCCESS;
@@ -2116,27 +2113,59 @@ JsonUtilCode Selector::processComparisonExpr(const bool is_self, const StringVie
                                              jsn::vector<int64_t> &result) {
     if (node->IsArray()) {
         for (int64_t i = 0; i < node->Size(); i++) {
-            JValue &m = node->GetArray()[i];
-            JValue *v;
-            if (is_self) {
-                v = &m;
-            } else {
-                if (!m.IsObject()) continue;  // not object, skip
-                JValue::MemberIterator it = m.FindMember(member_name.getView());
-                if (it == m.MemberEnd()) continue;  // does not have the attribute, skip
-                v = &it->value;
-            }
-            if (evalOp(v, op, comparison_value)) result.push_back(i);
+            JValue &candidate = node->GetArray()[i];
+            const JValue *v = is_self ? &candidate : resolveMember(candidate, member_name);
+            if (v != nullptr && evalOp(v, op, comparison_value)) result.push_back(i);
         }
-    } else if (node->IsObject()){
-        JValue::MemberIterator it = node->FindMember(member_name.getView());
-        if (it != node->MemberEnd()) {
-            if (evalOp(&it->value, op, comparison_value)) result.push_back(0);
+    } else if (node->IsObject()) {
+        int64_t ordinal = 0;
+        for (const auto &member : node->GetObject()) {
+            const JValue *v = is_self ? &member.value : resolveMember(member.value, member_name);
+            if (v != nullptr && evalOp(v, op, comparison_value)) result.push_back(ordinal);
+            ++ordinal;
         }
-    } else if (is_self)  {
+    } else if (is_self) {
         if (evalOp(node, op, comparison_value)) result.push_back(0);
     }
     return JSONUTIL_SUCCESS;
+}
+
+/**
+ * The member_name member of candidate, or a null pointer if candidate is not an object or
+ * has no such member.
+ */
+const JValue *Selector::resolveMember(const JValue &candidate, const StringViewHelper &member_name) const {
+    if (!candidate.IsObject()) return nullptr;
+    JValue::ConstMemberIterator it = candidate.FindMember(member_name.getView());
+    return it == candidate.MemberEnd() ? nullptr : &it->value;
+}
+
+/**
+ * The element at idx of candidate's member_name member, or a null pointer if candidate has
+ * no such member, the member is not an array, or idx is out of bounds (a negative idx counts
+ * from the end of the array).
+ */
+const JValue *Selector::resolveMemberElementAtIndex(const JValue &candidate, const StringViewHelper &member_name,
+                                             int64_t idx) const {
+    const JValue *member = resolveMember(candidate, member_name);
+    if (member == nullptr || !member->IsArray()) return nullptr;
+    if (idx < 0) idx += member->Size();
+    if (idx < 0 || idx >= static_cast<int64_t>(member->Size())) return nullptr;
+    return &member->GetArray()[idx];
+}
+
+/**
+ * Whether candidate's member_name member is an array containing at least one element that
+ * passes evalOp(element, op, comparison_value).
+ */
+bool Selector::anyMemberElementMatches(const JValue &candidate, const StringViewHelper &member_name,
+                                       const Token::TokenType op, const JValue &comparison_value) {
+    const JValue *member = resolveMember(candidate, member_name);
+    if (member == nullptr || !member->IsArray()) return false;
+    for (const auto &element : member->GetArray()) {
+        if (evalOp(&element, op, comparison_value)) return true;
+    }
+    return false;
 }
 
 bool Selector::evalOp(const JValue *v, const Token::TokenType op, const JValue &comparison_value) {
@@ -2309,15 +2338,14 @@ bool Selector::evalOp(const JValue *v, const Token::TokenType op, const JValue &
 JsonUtilCode Selector::processAttributeFilter(const StringViewHelper &member_name, jsn::vector<int64_t> &result) {
     if (node->IsArray()) {
         for (int64_t i = 0; i < node->Size(); i++) {
-            JValue &m = node->GetArray()[i];
-            if (!m.IsObject()) continue;  // skip non-object values
-            JValue::MemberIterator it = m.FindMember(member_name.getView());
-            if (it == m.MemberEnd()) continue;  // does not have the attribute, skip
-            result.push_back(i);
+            if (resolveMember(node->GetArray()[i], member_name) != nullptr) result.push_back(i);
         }
     } else if (node->IsObject()) {
-        if (node->FindMember(member_name.getView()) != node->MemberEnd())
-            result.push_back(0);
+        int64_t ordinal = 0;
+        for (const auto &member : node->GetObject()) {
+            if (resolveMember(member.value, member_name) != nullptr) result.push_back(ordinal);
+            ++ordinal;
+        }
     } else {
         return JSONUTIL_INVALID_JSON_PATH;
     }
@@ -2344,7 +2372,7 @@ void Selector::vectorUnion(const jsn::vector<int64_t> &v, jsn::vector<int64_t> &
  */
 void Selector::vectorIntersection(const jsn::vector<int64_t> &v1, const jsn::vector<int64_t> &v2,
                                   jsn::vector<int64_t> &r) {
-    jsn::unordered_set<int> set(v2.begin(), v2.end());
+    jsn::unordered_set<int64_t> set(v2.begin(), v2.end());
     for (auto e : v1) {
         if (set.find(e) != set.end()) {
             r.push_back(e);
